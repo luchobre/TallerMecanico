@@ -2,42 +2,7 @@
 USE TallerMecanicoUTNFRGP;
 GO
 
---Procedimiento almacenado que crea una orden nueva de trabajo, solo si no hay otra orden en proceso para ese auto
-
-CREATE PROCEDURE sp_RegistrarOrdenTrabajo
-    @IDVehiculo INT,
-    @IDMecanico INT
-AS
-BEGIN
-    BEGIN TRY
-        BEGIN TRANSACTION;
-        IF EXISTS (
-            SELECT 1
-            FROM OrdenTrabajo o
-            INNER JOIN EstadoOrden e ON o.IDEstado = e.IDEstado
-            WHERE o.IDVehiculo = @IDVehiculo
-              AND e.NombreEstado IN ('Pendiente', 'En Proceso')
-        )
-        BEGIN
-            RAISERROR('El vehículo ya tiene una orden activa en el taller.', 16, 1);
-            ROLLBACK TRANSACTION;
-            RETURN;
-        END;
-        INSERT INTO OrdenTrabajo (IDVehiculo, IDMecanico, FechaIngreso, IDEstado, Total)
-        VALUES (
-            @IDVehiculo, @IDMecanico, GETDATE(), (SELECT IDEstado FROM EstadoOrden WHERE NombreEstado = 'Pendiente'), 0
-            );
-        COMMIT TRANSACTION;
-        PRINT 'Orden registrada correctamente.';
-    END TRY
-
-    BEGIN CATCH
-        ROLLBACK TRANSACTION;
-        RAISERROR('Error al registrar la orden', 16, 1);
-    END CATCH
-END;
-GO
-
+--Procedimiento almacenado para finalizar una orden de trabajo solo si la misma se encuentra con ordenes activas.
 
 CREATE PROCEDURE sp_FinalizarOrdenTrabajo
     @IDOrden INT
@@ -58,9 +23,9 @@ BEGIN
         IF EXISTS (
             SELECT 1 
             FROM OrdenTrabajo o
-            INNER JOIN EstadoOrden e ON o.IDEstado = e.IDEstado
+            INNER JOIN EstadoDeOrdenTrabajo e ON o.IDEstadoOrden = e.IDEstadoOrden
             WHERE IDOrden = @IDOrden
-              AND e.NombreEstado = 'Finalizada'
+              AND e.NombreDeEstado = 'Finalizada'
         )
         BEGIN
             RAISERROR('La orden ya está finalizada.', 16, 1);
@@ -98,6 +63,42 @@ BEGIN
     BEGIN CATCH
         ROLLBACK TRANSACTION;
         RAISERROR('Error al finalizar la orden', 16, 1);
+    END CATCH
+END;
+GO
+
+--Procedimiento almacenado que crea una orden nueva de trabajo, solo si no hay otra orden en proceso para ese auto
+
+CREATE PROCEDURE sp_RegistrarOrdenTrabajo
+    @IDVehiculo INT,
+    @IDMecanico INT
+AS
+BEGIN
+    BEGIN TRY
+        BEGIN TRANSACTION;
+        IF EXISTS (
+            SELECT 1
+            FROM OrdenTrabajo o
+            INNER JOIN EstadoDeOrdenTrabajo e ON o.IDEstadoOrden = e.IDEstadoOrden
+            WHERE o.IDVehiculo = @IDVehiculo
+              AND e.NombreDeEstado IN ('Pendiente', 'En Proceso')
+        )
+        BEGIN
+            RAISERROR('El vehículo ya tiene una orden activa en el taller.', 16, 1);
+            ROLLBACK TRANSACTION;
+            RETURN;
+        END;
+        INSERT INTO OrdenTrabajo (IDVehiculo, IDMecanico, FechaIngreso, IDEstadoOrden, Total)
+        VALUES (
+            @IDVehiculo, @IDMecanico, GETDATE(), (SELECT IDEstadoOrden FROM EstadoDeOrdenTrabajo WHERE NombreDeEstado = 'Pendiente'), 0
+            );
+        COMMIT TRANSACTION;
+        PRINT 'Orden registrada correctamente.';
+    END TRY
+
+    BEGIN CATCH
+        ROLLBACK TRANSACTION;
+        RAISERROR('Error al registrar la orden', 16, 1);
     END CATCH
 END;
 GO
