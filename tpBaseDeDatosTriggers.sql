@@ -27,26 +27,30 @@ END;
 GO
 
 
---Trigger para evitar que se elimine un mecanico que tiene ordenes pendientes o en proceso
-CREATE TRIGGER tr_evitarBajaMecanicoConOrdenesActivas 
-ON Mecanico
-INSTEAD OF DELETE
+--Trigger para descontar automáticamente el stock del repuesto evitando que sea negativo
+
+DROP TRIGGER IF EXISTS tr_descontarStockRepuesto;
+GO
+
+CREATE TRIGGER tr_descontarStockRepuesto
+ON DetalleOrden
+AFTER INSERT
 AS
 BEGIN
-    IF EXISTS (
-        SELECT 1 
-        FROM OrdenTrabajo o
-        INNER JOIN EstadoDeOrdenTrabajo e ON o.IDEstadoOrden = e.IDEstadoOrden
-        INNER JOIN deleted d ON o.IDMecanico = d.IDMecanico
-        WHERE e.NombreDeEstado IN ('Pendiente', 'En Proceso')
-    )
-    BEGIN
-        RAISERROR('No se puede eliminar el mecánico, tiene órdenes activas.', 16, 1);
-        RETURN;
-    END;
+    -- Actualizar stock solo para repuestos válidos
+    UPDATE r
+    SET r.Stock = r.Stock - i.Cantidad
+    FROM Repuesto r
+    INNER JOIN inserted i ON r.IDRepuesto = i.IDRepuesto
+    WHERE i.IDRepuesto IS NOT NULL;
 
-    DELETE FROM Mecanico
-    WHERE IDMecanico IN (SELECT IDMecanico FROM deleted);
+    -- Evitar stock negativo
+    IF EXISTS (SELECT 1 FROM Repuesto WHERE Stock < 0)
+    BEGIN
+        RAISERROR('No está permitido tener stock negativo.',16,1);
+        ROLLBACK TRANSACTION;
+        RETURN;
+    END
 END;
 GO
 
